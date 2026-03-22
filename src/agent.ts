@@ -26,6 +26,7 @@ import {
   generateReport,
   bootstrapTracker,
 } from "./tracker.js";
+import { captureDump, getDumpSummary, markDumpDone, clearDoneDumps } from "./dump.js";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -432,10 +433,11 @@ await sdk.startWatching({
           "ghost status — see unreplied messages",
           "ghost scan — force a scan now",
           "ghost report — your relationship health report",
-          "ghost skip — skip for now, come back in 30min",
-          "ghost later — same as ghost skip",
-          "ghost snooze 1h — come back in 1 hour",
+          "ghost skip / later — snooze 30min",
+          "ghost snooze 1h — custom snooze",
           "ghost dismiss — skip permanently",
+          "ghost dump — see your brain dump",
+          "ghost done [text] — mark a dump item done",
           "ghost help — this message",
           "",
           "Reply 1, 2, or 3 to send a draft.",
@@ -445,12 +447,56 @@ await sdk.startWatching({
       return;
     }
 
+    // ── Brain dump commands ────────────────────────────────────
+
+    if (lower === "ghost dump" || lower === "ghost brain") {
+      const summary = getDumpSummary();
+      await ghostSend(MY_PHONE!, summary);
+      return;
+    }
+
+    if (lower.startsWith("ghost done ")) {
+      const query = text.slice(11).trim();
+      const done = markDumpDone(query);
+      if (done) {
+        await ghostSend(MY_PHONE!, `done: ${done.text}`);
+      } else {
+        await ghostSend(MY_PHONE!, "couldn't find that one.");
+      }
+      return;
+    }
+
+    if (lower === "ghost clear done") {
+      const count = clearDoneDumps();
+      await ghostSend(MY_PHONE!, `cleared ${count} completed items.`);
+      return;
+    }
+
     // ── Conversational mode ─────────────────────────────────────
-    // If it's not a command or reply choice, chat with Ghost naturally
 
     if (lower.startsWith("ghost ")) {
-      // Anything mentioning "ghost" that isn't a known command = natural chat
       await handleChat(text);
+      return;
+    }
+
+    // ── Brain dump catch-all ────────────────────────────────────
+    // Any self-text that isn't a command or reply choice = brain dump
+    // Ghost catches it, categorizes it, optionally sets a reminder
+
+    if (text.length > 2) {
+      const { confirmation, reminderMs, entry } = await captureDump(text);
+      await ghostSend(MY_PHONE!, confirmation);
+      console.log(`  Dump: "${text.slice(0, 40)}..." → ${entry.category}`);
+
+      // Set up reminder if one was detected
+      if (reminderMs) {
+        setTimeout(async () => {
+          try {
+            await ghostSend(MY_PHONE!, `reminder: ${entry.text}`);
+            console.log(`  Reminder fired: ${entry.text}`);
+          } catch {}
+        }, reminderMs);
+      }
     }
   },
 });
