@@ -236,6 +236,79 @@ setTimeout(runScan, 10_000);
 // Recurring scans
 const scanTimer = setInterval(runScan, SCAN_INTERVAL * 60 * 1000);
 
+// ── Accountability check-ins ────────────────────────────────────────
+
+/**
+ * Proactive check-ins that Ghost sends without being asked.
+ * - Idle alert: if you haven't replied to anyone in 3+ hours
+ * - Streak nudge: when you're about to break a reply streak
+ * - Evening summary: daily recap at 9pm
+ */
+
+let lastCheckinTime = 0;
+
+async function runAccountabilityCheck() {
+  try {
+    const now = new Date();
+    const hour = now.getHours();
+
+    // Evening summary at 9pm (only once per day)
+    const todayKey = now.toISOString().slice(0, 10);
+    const lastCheckinDate = new Date(lastCheckinTime).toISOString().slice(0, 10);
+
+    if (hour === 21 && todayKey !== lastCheckinDate) {
+      lastCheckinTime = Date.now();
+
+      const ghosted = await scanForGhosted(sdk, 0, MY_PHONE);
+      const contacts = Object.values(tracker.contacts);
+      const todayStats = tracker.dailyStats[todayKey] ?? { replied: 0, ghosted: 0, nudged: 0 };
+
+      let evening = "daily check-in:\n\n";
+
+      if (todayStats.replied > 0 || todayStats.nudged > 0) {
+        evening += `today: ${todayStats.replied} replied, ${todayStats.ghosted} ghosted\n`;
+      }
+
+      if (ghosted.length > 0) {
+        evening += `\n${ghosted.length} still waiting on you:\n`;
+        ghosted.slice(0, 3).forEach((g) => {
+          const name = g.senderName || g.sender;
+          evening += `  - ${name} (${g.minutesAgo > 60 ? Math.round(g.minutesAgo / 60) + "hr" : g.minutesAgo + "m"} ago)\n`;
+        });
+      } else {
+        evening += "\nno one's waiting on you. clean slate.";
+      }
+
+      // Streak callouts
+      const activeStreaks = contacts.filter((c) => c.streak >= 3);
+      if (activeStreaks.length > 0) {
+        evening += `\nstreaks going:\n`;
+        activeStreaks.forEach((c) => {
+          evening += `  ${c.name} - ${c.streak} days\n`;
+        });
+      }
+
+      await ghostSend(MY_PHONE!, evening);
+      console.log(`  [${now.toLocaleTimeString()}] Evening check-in sent`);
+    }
+
+    // Idle alert: if there are 3+ unreplied messages and it's been 2+ hours since last nudge
+    if (hour >= 9 && hour <= 22) {
+      const ghosted = await scanForGhosted(sdk, 120, MY_PHONE); // 2hr+ unreplied
+      if (ghosted.length >= 3 && pending.length === 0 && nudgeQueue.length === 0) {
+        const names = ghosted.slice(0, 3).map((g) => g.senderName || g.sender).join(", ");
+        await ghostSend(MY_PHONE!, `heads up - ${ghosted.length} people waiting on you (${names}). want me to help? text ghost scan`);
+        console.log(`  [${now.toLocaleTimeString()}] Idle alert sent`);
+      }
+    }
+  } catch (err) {
+    console.error(`  Accountability check error:`, err);
+  }
+}
+
+// Run accountability check every 30 minutes
+const accountabilityTimer = setInterval(runAccountabilityCheck, 30 * 60 * 1000);
+
 // ── Watch for reply choices + commands ──────────────────────────────────
 
 await sdk.startWatching({
@@ -565,6 +638,7 @@ Answer their question using this data. Be conversational, not robotic. If they a
 process.on("SIGINT", async () => {
   console.log("\n  Shutting down Ghost...");
   clearInterval(scanTimer);
+  clearInterval(accountabilityTimer);
   reminders.destroy();
   sdk.stopWatching();
   await sdk.close();
