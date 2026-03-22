@@ -123,6 +123,33 @@ no more thoughts lost to scroll. no more texting yourself and forgetting 10 minu
 
 ---
 
+## accountability
+
+ghost doesn't wait for you to ask. it checks in on its own:
+
+**evening summary (9pm daily):**
+```
+daily check-in:
+
+today: 8 replied, 2 ghosted
+
+2 still waiting on you:
+  - Mom (4hr ago)
+  - Jake (2hr ago)
+
+streaks going:
+  Sarah - 5 days
+  Mike - 12 days
+```
+
+**idle alert** - if 3+ people are waiting on you for 2+ hours, ghost gives you a heads up: "heads up - 3 people waiting on you. want me to help? text ghost scan"
+
+**streak tracking** - ghost knows who you've been consistent with. it won't let you break a streak without knowing.
+
+no guilt. no nagging. just a friend who keeps it real with you once a day.
+
+---
+
 ## how it maps to neurodivergent brains
 
 | barrier | what ghost does |
@@ -134,6 +161,7 @@ no more thoughts lost to scroll. no more texting yourself and forgetting 10 minu
 | object permanence - out of sight out of mind | ghost doesn't forget. resurfaces what you can't see |
 | thought capture - ideas vanish in seconds | text yourself anything. ghost catches it |
 | guilt spiral - shame makes it harder | no guilt. no shame. just options |
+| no accountability - no one checks on you | evening summary + idle alerts. ghost checks in |
 
 ---
 
