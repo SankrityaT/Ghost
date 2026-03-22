@@ -509,6 +509,7 @@ await sdk.startWatching({
           "ghost skip / later — snooze 30min",
           "ghost snooze 1h — custom snooze",
           "ghost dismiss — skip permanently",
+          "ghost text [name/number] — draft a message to someone",
           "ghost dump — see your brain dump",
           "ghost done [text] — mark a dump item done",
           "ghost help — this message",
@@ -542,6 +543,117 @@ await sdk.startWatching({
     if (lower === "ghost clear done") {
       const count = clearDoneDumps();
       await ghostSend(MY_PHONE!, `cleared ${count} completed items.`);
+      return;
+    }
+
+    // ── Proactive messaging: "ghost text [name/number]" ────────
+
+    if (lower.startsWith("ghost text ") || lower.startsWith("ghost msg ")) {
+      const target = text.replace(/^ghost\s+(text|msg)\s+/i, "").trim();
+      if (!target) {
+        await ghostSend(MY_PHONE!, "who do you want to text? give me a name or number.");
+        return;
+      }
+
+      // Try to find this contact in our tracker or chats
+      let recipientPhone = target;
+      let recipientName = target;
+
+      // If it's not a phone number, search tracker contacts by name
+      if (!/^\+?\d{7,}$/.test(target.replace(/\D/g, ""))) {
+        const contacts = Object.values(tracker.contacts);
+        const match = contacts.find(
+          (c) => c.name.toLowerCase().includes(target.toLowerCase())
+        );
+        if (match) {
+          recipientPhone = match.phone;
+          recipientName = match.name;
+        } else {
+          await ghostSend(MY_PHONE!, `can't find "${target}" in your contacts. try a phone number instead.`);
+          return;
+        }
+      }
+
+      // Get conversation context for voice matching
+      const context = await sdk.getMessages({
+        sender: recipientPhone,
+        limit: 15,
+        since: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      });
+
+      const recentConvo = context.messages
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+        .slice(-10)
+        .map((m) => `${m.isFromMe ? "You" : recipientName}: ${m.text || "(attachment)"}`)
+        .join("\n");
+
+      // Get user's voice from past messages
+      const myMsgs = context.messages
+        .filter((m) => m.isFromMe && m.text && m.text.length > 5)
+        .map((m) => m.text!)
+        .slice(-10);
+
+      const voiceContext = myMsgs.length > 0
+        ? `User's texting style:\n${myMsgs.map((m) => `- "${m}"`).join("\n")}`
+        : "";
+
+      try {
+        const { text: drafts } = await generateText({
+          model: groq("llama-3.3-70b-versatile"),
+          system: `Draft 3 message options for the user to send to ${recipientName}. These should be conversation starters or follow-ups based on recent context.
+
+${voiceContext || "Default to casual, natural texting."}
+
+RULES:
+- Match the user's texting style from the examples
+- Keep each option 1-2 sentences max
+- Make them natural, not forced
+- If there's recent conversation context, reference it naturally
+- If no context, make it a casual check-in
+
+FORMAT (exactly 3 lines):
+CASUAL: [relaxed opener]
+WARM: [friendly, engaged]
+BRIEF: [shortest possible]`,
+          prompt: recentConvo
+            ? `Recent conversation:\n${recentConvo}\n\nDraft 3 messages to send to ${recipientName}:`
+            : `Draft 3 messages to send to ${recipientName} (no recent context):`,
+          temperature: 0.8,
+          maxTokens: 300,
+        });
+
+        const lines = drafts.split("\n").filter((l) => l.trim());
+        const casual = lines.find((l) => l.startsWith("CASUAL:"))?.replace("CASUAL:", "").trim() ?? `hey ${recipientName.split(" ")[0].toLowerCase()}!`;
+        const warm = lines.find((l) => l.startsWith("WARM:"))?.replace("WARM:", "").trim() ?? `hey! how's it going?`;
+        const brief = lines.find((l) => l.startsWith("BRIEF:"))?.replace("BRIEF:", "").trim() ?? `yo`;
+
+        const nudgeMsg = [
+          `text ${recipientName}:`,
+          ``,
+          `1. ${casual}`,
+          `2. ${warm}`,
+          `3. ${brief}`,
+          ``,
+          `reply 1, 2, or 3 to send.`,
+        ].join("\n");
+
+        await ghostSend(MY_PHONE!, nudgeMsg);
+
+        // Save as pending so 1/2/3 works
+        pending.push({
+          sender: recipientPhone,
+          senderName: recipientName,
+          chatId: "",
+          drafts: { casual, warm, brief },
+          nudgedAt: Date.now(),
+          minutesAgo: 0,
+        });
+        savePending(pending);
+        console.log(`  Proactive text drafted for ${recipientName}`);
+      } catch (err) {
+        console.error(`  Draft error:`, err);
+        await ghostSend(MY_PHONE!, "couldn't draft that. try again?");
+      }
       return;
     }
 

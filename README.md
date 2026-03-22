@@ -81,6 +81,26 @@ text `2`. ghost sends it to sarah. done. 2 seconds.
 
 ---
 
+## proactive messaging
+
+don't just reply - start conversations too. text `ghost text sarah` and ghost drafts 3 openers in your voice:
+
+```
+text Sarah:
+
+1. hey how's the new apartment going?
+2. yo we should catch up soon, it's been a minute
+3. hey sarah
+
+reply 1, 2, or 3 to send.
+```
+
+works with names (searches your contacts) or phone numbers (`ghost text +1234567890`). ghost reads your past conversation with that person to match your tone and reference recent context.
+
+for people with adhd, starting a conversation can be just as hard as replying to one. ghost removes that barrier too.
+
+---
+
 ## brain dump
 
 text yourself anything. ghost catches it.
@@ -196,6 +216,7 @@ bun run start
 | `ghost skip` / `ghost later` | snooze 30 min |
 | `ghost snooze 1h` | custom snooze |
 | `ghost dismiss` | skip permanently |
+| `ghost text [name]` | draft a message to someone |
 | `ghost status` | unreplied messages |
 | `ghost report` | relationship health score |
 | `ghost dump` | see your brain dump |
