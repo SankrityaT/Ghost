@@ -204,8 +204,12 @@ export function generateReport(tracker: TrackerData): string {
 
 /**
  * Analyze message history to build initial tracker data.
+ * Only runs if tracker is empty (first boot). Skips on restarts to avoid double-counting.
  */
 export async function bootstrapTracker(sdk: IMessageSDK, tracker: TrackerData) {
+  // Skip if we already have data — prevents double-counting on restart
+  if (Object.keys(tracker.contacts).length > 0) return;
+
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const result = await sdk.getMessages({ limit: 500, since });
 
@@ -219,6 +223,14 @@ export async function bootstrapTracker(sdk: IMessageSDK, tracker: TrackerData) {
 
   for (const [, messages] of chatMessages) {
     messages.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Skip short codes / automated senders
+    const sender = messages[0]?.sender;
+    if (sender) {
+      const digits = sender.replace(/\D/g, "");
+      if (digits.length <= 6 && digits.length >= 4) continue;
+      if (/^[^@]+@[^@]+\.[^@]+$/.test(sender)) continue;
+    }
 
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
